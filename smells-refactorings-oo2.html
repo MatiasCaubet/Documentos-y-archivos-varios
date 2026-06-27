@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bad Smells → Refactorings — OO2</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #222636;
+    --border: #2e3348;
+    --text: #e2e8f0;
+    --muted: #8892a4;
+
+    /* categoria colors */
+    --bloater:   #ff6b6b;
+    --abuser:    #ffd93d;
+    --preventer: #f97316;
+    --disp:      #a78bfa;
+    --coupler:   #38bdf8;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+
+  /* ── HEADER ── */
+  header {
+    background: linear-gradient(135deg,#1a1d27,#16213e,#0f3460);
+    border-bottom: 1px solid var(--border);
+    padding: 1.8rem 2rem;
+    text-align: center;
+  }
+  header h1 { font-size: 1.45rem; color: #a78bfa; letter-spacing: .5px; }
+  header p  { color: var(--muted); font-size: .85rem; margin-top: .3rem; }
+
+  /* ── CONTROLS ── */
+  .controls {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: .9rem 1.5rem;
+    display: flex; gap: .6rem; flex-wrap: wrap; align-items: center;
+  }
+  .controls label { font-size: .8rem; color: var(--muted); }
+  .filter-btn {
+    padding: .3rem .85rem;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--muted);
+    font-size: .78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .2s;
+  }
+  .filter-btn:hover { color: var(--text); border-color: #555; }
+  .filter-btn.active { color: white; }
+  .filter-btn[data-cat="all"]      { border-color:#6c63ff; }
+  .filter-btn[data-cat="all"].active    { background:#6c63ff; border-color:#6c63ff; color:white; }
+  .filter-btn[data-cat="bloater"].active    { background:var(--bloater); border-color:var(--bloater); }
+  .filter-btn[data-cat="abuser"].active     { background:var(--abuser); border-color:var(--abuser); color:#1a1d27; }
+  .filter-btn[data-cat="preventer"].active  { background:var(--preventer); border-color:var(--preventer); }
+  .filter-btn[data-cat="dispensable"].active{ background:var(--disp); border-color:var(--disp); }
+  .filter-btn[data-cat="coupler"].active    { background:var(--coupler); border-color:var(--coupler); color:#1a1d27; }
+
+  .search-box {
+    margin-left: auto;
+    padding: .35rem .8rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: .82rem;
+    width: 200px;
+  }
+  .search-box:focus { outline: none; border-color: #6c63ff; }
+
+  /* ── LEGEND ── */
+  .legend {
+    display: flex; gap: .8rem; flex-wrap: wrap;
+    padding: .7rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .legend-item { display: flex; align-items: center; gap: .35rem; font-size: .75rem; color: var(--muted); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+  /* ── TABLE ── */
+  .table-wrap { overflow-x: auto; padding: 1.5rem; }
+  table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+
+  thead th {
+    background: var(--surface2);
+    color: var(--muted);
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: .7rem 1rem;
+    text-align: left;
+    border-bottom: 2px solid var(--border);
+    position: sticky; top: 0;
+    white-space: nowrap;
+  }
+
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background .15s;
+  }
+  tbody tr:hover { background: var(--surface2); }
+  tbody tr.hidden { display: none; }
+
+  td { padding: .75rem 1rem; vertical-align: top; }
+
+  /* categoria badge */
+  .cat-badge {
+    display: inline-block;
+    padding: .2rem .55rem;
+    border-radius: 4px;
+    font-size: .7rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .cat-bloater    { background: rgba(255,107,107,.15); color: var(--bloater);   border:1px solid rgba(255,107,107,.3); }
+  .cat-abuser     { background: rgba(255,217,61,.12);  color: var(--abuser);    border:1px solid rgba(255,217,61,.3); }
+  .cat-preventer  { background: rgba(249,115,22,.12);  color: var(--preventer); border:1px solid rgba(249,115,22,.3); }
+  .cat-dispensable{ background: rgba(167,139,250,.12); color: var(--disp);      border:1px solid rgba(167,139,250,.3); }
+  .cat-coupler    { background: rgba(56,189,248,.12);  color: var(--coupler);   border:1px solid rgba(56,189,248,.3); }
+
+  /* smell name */
+  .smell-name { font-weight: 700; color: var(--text); display: block; margin-bottom: .25rem; }
+  .smell-desc { font-size: .82rem; color: var(--muted); }
+
+  /* refactoring pills */
+  .ref-pills { display: flex; flex-wrap: wrap; gap: .35rem; }
+  .ref-pill {
+    background: rgba(108,99,255,.12);
+    color: #a78bfa;
+    border: 1px solid rgba(108,99,255,.25);
+    border-radius: 4px;
+    padding: .2rem .55rem;
+    font-size: .78rem;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all .2s;
+  }
+  .ref-pill:hover { background: rgba(108,99,255,.25); }
+
+  /* refactoring description tooltip-style */
+  .ref-desc-cell { font-size: .82rem; color: var(--muted); }
+  .ref-desc-cell strong { color: #a78bfa; display: block; margin-bottom: .15rem; font-size: .82rem; }
+
+  /* arrow column */
+  .arrow { color: #6c63ff; font-size: 1.1rem; text-align: center; }
+
+  /* empty state */
+  .empty-row td { text-align: center; color: var(--muted); padding: 2rem; font-style: italic; }
+
+  /* ── REFACTORING GLOSSARY ── */
+  .glossary-section {
+    margin: 0 1.5rem 2rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .glossary-header {
+    background: var(--surface2);
+    padding: .9rem 1.2rem;
+    display: flex; align-items: center; gap: .6rem;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .glossary-header h2 { font-size: .95rem; color: #a78bfa; flex: 1; }
+  .glossary-body { padding: 1rem 1.2rem; display: grid; grid-template-columns: repeat(auto-fill,minmax(280px,1fr)); gap: .7rem; }
+  .glos-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: .75rem 1rem;
+  }
+  .glos-card h3 { font-size: .82rem; color: #a78bfa; margin-bottom: .3rem; }
+  .glos-card p  { font-size: .8rem; color: var(--muted); }
+  .chevron { color: var(--muted); transition: transform .3s; }
+  .collapsed .glossary-body { display: none; }
+  .collapsed .chevron { transform: rotate(-90deg); }
+
+  /* count badge */
+  #count { font-size: .8rem; color: var(--muted); margin-left: auto; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Bad Smells → Refactorings</h1>
+  <p>Orientación a Objetos II &nbsp;·&nbsp; Catálogo de Fowler/Kerievsky visto en la cátedra</p>
+</header>
+
+<div class="controls">
+  <label>Filtrar por categoría:</label>
+  <button class="filter-btn active" data-cat="all"        onclick="filter('all',this)">Todos</button>
+  <button class="filter-btn"        data-cat="bloater"    onclick="filter('bloater',this)">🔴 Bloaters</button>
+  <button class="filter-btn"        data-cat="abuser"     onclick="filter('abuser',this)">🟡 Tool Abusers</button>
+  <button class="filter-btn"        data-cat="preventer"  onclick="filter('preventer',this)">🟠 Change Preventers</button>
+  <button class="filter-btn"        data-cat="dispensable"onclick="filter('dispensable',this)">🟣 Dispensables</button>
+  <button class="filter-btn"        data-cat="coupler"    onclick="filter('coupler',this)">🔵 Couplers</button>
+  <span id="count"></span>
+  <input class="search-box" type="text" placeholder="🔍 Buscar smell o refactoring..." oninput="search(this.value)">
+</div>
+
+<div class="legend">
+  <div class="legend-item"><div class="dot" style="background:var(--bloater)"></div>Bloaters — código que creció demasiado</div>
+  <div class="legend-item"><div class="dot" style="background:var(--abuser)"></div>Tool Abusers — mal uso de herramientas OO</div>
+  <div class="legend-item"><div class="dot" style="background:var(--preventer)"></div>Change Preventers — dificultan el cambio</div>
+  <div class="legend-item"><div class="dot" style="background:var(--disp)"></div>Dispensables — código innecesario</div>
+  <div class="legend-item"><div class="dot" style="background:var(--coupler)"></div>Couplers — acoplamiento excesivo</div>
+</div>
+
+<div class="table-wrap">
+<table id="main-table">
+  <thead>
+    <tr>
+      <th style="width:130px">Categoría</th>
+      <th style="width:200px">Bad Smell</th>
+      <th style="width:30px"></th>
+      <th style="width:220px">Refactoring(s)</th>
+      <th>Qué hace el refactoring</th>
+    </tr>
+  </thead>
+  <tbody id="tbody">
+
+    <!-- ══ BLOATERS ══ -->
+    <tr data-cat="bloater" data-text="long method extract method metodo largo">
+      <td><span class="cat-badge cat-bloater">Bloater</span></td>
+      <td>
+        <span class="smell-name">Long Method</span>
+        <span class="smell-desc">Un método que creció tanto que es difícil de entender. Hace demasiadas cosas a la vez.</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Extract Method</span>
+          <span class="ref-pill">Extract Parameter</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Extract Method:</strong> toma un fragmento del método largo y lo convierte en un método separado con nombre descriptivo. Repetir hasta que cada método haga una sola cosa.
+        <br><strong>Extract Parameter:</strong> cuando el método tiene lógica dependiente de parámetros innecesariamente complejos, los extrae.
+      </td>
+    </tr>
+
+    <tr data-cat="bloater" data-text="large class clase grande extract class extract subclass">
+      <td><span class="cat-badge cat-bloater">Bloater</span></td>
+      <td>
+        <span class="smell-name">Large Class</span>
+        <span class="smell-desc">Una clase con demasiados campos, métodos y responsabilidades. Viola el principio de responsabilidad única.</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Extract Class</span>
+          <span class="ref-pill">Extract Subclass</span>
+          <span class="ref-pill">Extract Method</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Extract Class:</strong> mueve un grupo de campos y métodos relacionados a una nueva clase separada.<br>
+        <strong>Extract Subclass:</strong> cuando algunos comportamientos solo aplican a algunos casos, los mueve a una subclase.
+      </td>
+    </tr>
+
+    <tr data-cat="bloater" data-text="long parameter list lista parametros introduce parameter object">
+      <td><span class="cat-badge cat-bloater">Bloater</span></td>
+      <td>
+        <span class="smell-name">Long Parameter List</span>
+        <span class="smell-desc">Un método recibe demasiados parámetros (más de 3-4). Difícil de entender y llamar correctamente.</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Extract Parameter</span>
+          <span class="ref-pill">Introduce Parameter Object</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Introduce Parameter Object:</strong> agrupa los parámetros relacionados en un objeto que los encapsula, reemplazando la lista larga por un único argumento con significado propio.
+      </td>
+    </tr>
+
+    <tr data-cat="bloater" data-text="primitive obsession tipos primitivos replace data value with object introduce null object">
+      <td><span class="cat-badge cat-bloater">Bloater</span></td>
+      <td>
+        <span class="smell-name">Primitive Obsession</span>
+        <span class="smell-desc">Uso de tipos primitivos (String, int) donde debería haber objetos de dominio (ej: "precio" como double en vez de clase Dinero).</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Replace Data Value with Object</span>
+          <span class="ref-pill">Introduce Null Object</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Replace Data Value with Object:</strong> convierte el valor primitivo en un objeto de primera clase con sus propias responsabilidades y comportamiento.<br>
+        <strong>Introduce Null Object:</strong> cuando el primitivo es <code>null</code>, introduce un objeto que representa la ausencia de valor.
+      </td>
+    </tr>
+
+    <tr data-cat="bloater" data-text="data clumps grupos datos extract class introduce parameter object">
+      <td><span class="cat-badge cat-bloater">Bloater</span></td>
+      <td>
+        <span class="smell-name">Data Clumps</span>
+        <span class="smell-desc">El mismo grupo de datos aparece junto en múltiples clases o parámetros (ej: ciudad, país, código postal siempre juntos). Son un objeto que no se creó.</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Extract Class</span>
+          <span class="ref-pill">Introduce Parameter Object</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Extract Class:</strong> crea una clase que encapsula el grupo de datos (ej: clase <code>Direccion</code>).<br>
+        <strong>Introduce Parameter Object:</strong> cuando el clump aparece en parámetros de métodos, lo agrupa en un objeto.
+      </td>
+    </tr>
+
+    <tr data-cat="bloater" data-text="imperative loops bucles for while replace loop with pipeline">
+      <td><span class="cat-badge cat-bloater">Bloater</span></td>
+      <td>
+        <span class="smell-name">Imperative Loops</span>
+        <span class="smell-desc">Bucles for/while con acumuladores y lógica de negocio mezclada. El propósito del loop no es inmediatamente obvio.</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Replace Loop with Pipeline</span>
+          <span class="ref-pill">Extract Method</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Replace Loop with Pipeline:</strong> reemplaza el bucle imperativo con operaciones de colección encadenadas (filter, map, reduce) que expresan la intención con mayor claridad.
+      </td>
+    </tr>
+
+    <!-- ══ TOOL ABUSERS ══ -->
+    <tr data-cat="abuser" data-text="switch statements condicionales replace conditional polymorphism state strategy">
+      <td><span class="cat-badge cat-abuser">Tool Abuser</span></td>
+      <td>
+        <span class="smell-name">Switch Statements</span>
+        <span class="smell-desc">Largos switch/if-else que ramifican según el tipo de un objeto. El mismo switch suele repetirse en varios lugares del código.</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Replace Conditional with Polymorphism</span>
+          <span class="ref-pill">Replace State-Altering Conditionals with State</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Replace Conditional with Polymorphism:</strong> crea una jerarquía de clases donde cada subclase implementa el comportamiento de una rama del switch. El polimorfismo reemplaza la condición.<br>
+        <strong>Replace State-Altering Conditionals with State:</strong> cuando el switch controla el estado de un objeto, aplica el patrón State.
+      </td>
+    </tr>
+
+    <tr data-cat="abuser" data-text="refused bequest herencia push down method replace inheritance with delegation">
+      <td><span class="cat-badge cat-abuser">Tool Abuser</span></td>
+      <td>
+        <span class="smell-name">Refused Bequest</span>
+        <span class="smell-desc">Una subclase hereda métodos de la superclase pero no los necesita o los ignora. La herencia se usó solo para reutilizar código, no porque exista una relación "es-un".</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Push Down Method</span>
+          <span class="ref-pill">Replace Inheritance with Delegation</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Push Down Method:</strong> baja el comportamiento rechazado a la subclase que sí lo necesita, fuera de la jerarquía compartida.<br>
+        <strong>Replace Inheritance with Delegation:</strong> si la subclase realmente no es un tipo de la superclase, reemplaza la herencia por composición.
+      </td>
+    </tr>
+
+    <tr data-cat="abuser" data-text="temporary field campo temporal introduce null object special case">
+      <td><span class="cat-badge cat-abuser">Tool Abuser</span></td>
+      <td>
+        <span class="smell-name">Temporary Field</span>
+        <span class="smell-desc">Un campo de instancia que solo tiene valor en ciertas circunstancias. El resto del tiempo está vacío/null, lo cual confunde a quien lee el código.</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Extract Class</span>
+          <span class="ref-pill">Introduce Null Object</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Extract Class:</strong> mueve el campo temporal y los métodos que lo usan a una clase separada que solo existe cuando corresponde.<br>
+        <strong>Introduce Null Object:</strong> cuando el campo es null en ciertos casos, introduce un objeto que maneja ese caso vacío.
+      </td>
+    </tr>
+
+    <tr data-cat="abuser" data-text="alternative classes different interfaces rename method move method adapter">
+      <td><span class="cat-badge cat-abuser">Tool Abuser</span></td>
+      <td>
+        <span class="smell-name">Alternative Classes with Different Interfaces</span>
+        <span class="smell-desc">Dos clases hacen lo mismo pero tienen métodos con nombres o firmas distintas. No son intercambiables aunque deberían serlo.</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Rename Method</span>
+          <span class="ref-pill">Move Method</span>
+          <span class="ref-pill">Adapter (patrón)</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Rename Method:</strong> unifica los nombres para que ambas clases hablen el mismo idioma.<br>
+        <strong>Adapter:</strong> cuando las interfaces no pueden unificarse fácilmente, introduce un Adapter que hace de puente.
+      </td>
+    </tr>
+
+    <!-- ══ CHANGE PREVENTERS ══ -->
+    <tr data-cat="preventer" data-text="divergent change cambio divergente extract class responsabilidad">
+      <td><span class="cat-badge cat-preventer">Change Preventer</span></td>
+      <td>
+        <span class="smell-name">Divergent Change</span>
+        <span class="smell-desc">Una clase se modifica por razones diferentes y no relacionadas. Si cada nuevo requerimiento te obliga a cambiar la misma clase por distintos motivos, tiene demasiadas responsabilidades.</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Extract Class</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Extract Class:</strong> separa las responsabilidades en clases distintas. Cada clase debe tener una sola razón para cambiar (SRP). Divergent Change y Shotgun Surgery son opuestos: en DC una clase cambia por muchas razones; en SS muchas clases cambian por una razón.
+      </td>
+    </tr>
+
+    <tr data-cat="preventer" data-text="shotgun surgery cirugía escopeta move method move field inline class">
+      <td><span class="cat-badge cat-preventer">Change Preventer</span></td>
+      <td>
+        <span class="smell-name">Shotgun Surgery</span>
+        <span class="smell-desc">Un solo cambio lógico requiere modificar muchas clases distintas al mismo tiempo. La responsabilidad está dispersa donde debería estar unificada.</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Move Method</span>
+          <span class="ref-pill">Move Field</span>
+          <span class="ref-pill">Inline Class</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Move Method / Move Field:</strong> consolida el comportamiento disperso en una sola clase que centralice esa responsabilidad.<br>
+        <strong>Inline Class:</strong> si una clase quedó tan pequeña que no justifica su existencia, la absorbe la que la llama.
+      </td>
+    </tr>
+
+    <tr data-cat="preventer" data-text="parallel inheritance hierarchies jerarquias paralelas move method move field">
+      <td><span class="cat-badge cat-preventer">Change Preventer</span></td>
+      <td>
+        <span class="smell-name">Parallel Inheritance Hierarchies</span>
+        <span class="smell-desc">Cada vez que creás una subclase en una jerarquía, tenés que crear una clase correspondiente en otra jerarquía. Caso especial de Shotgun Surgery en herencia.</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Move Method</span>
+          <span class="ref-pill">Move Field</span>
+          <span class="ref-pill">Form Template Method</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Move Method / Move Field:</strong> elimina la duplicación moviendo responsabilidades de una jerarquía a la otra hasta que una de las dos desaparece.<br>
+        <strong>Form Template Method:</strong> cuando las jerarquías comparten un algoritmo con variaciones, unifica el esqueleto en la superclase.
+      </td>
+    </tr>
+
+    <!-- ══ DISPENSABLES ══ -->
+    <tr data-cat="dispensable" data-text="duplicate code codigo duplicado extract method pull up method form template method">
+      <td><span class="cat-badge cat-dispensable">Dispensable</span></td>
+      <td>
+        <span class="smell-name">Duplicate Code</span>
+        <span class="smell-desc">El mismo fragmento de código aparece en más de un lugar. Si hay que cambiar la lógica, hay que cambiarla en todos los lugares (y siempre se olvida alguno).</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Extract Method</span>
+          <span class="ref-pill">Pull Up Method</span>
+          <span class="ref-pill">Form Template Method</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Extract Method:</strong> cuando la duplicación está dentro de la misma clase.<br>
+        <strong>Pull Up Method:</strong> cuando la duplicación está en subclases hermanas — sube el método a la superclase.<br>
+        <strong>Form Template Method:</strong> cuando los métodos duplicados tienen el mismo esqueleto pero pasos distintos — aplica Template Method para unificar la estructura.
+      </td>
+    </tr>
+
+    <tr data-cat="dispensable" data-text="data class clase datos encapsulate field move method">
+      <td><span class="cat-badge cat-dispensable">Dispensable</span></td>
+      <td>
+        <span class="smell-name">Data Class</span>
+        <span class="smell-desc">Una clase con solo campos y getters/setters, sin comportamiento propio. Es un contenedor de datos pasivo; la lógica que debería estar aquí vive en otras clases.</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Encapsulate Field</span>
+          <span class="ref-pill">Move Method</span>
+          <span class="ref-pill">Pull Up Field</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Encapsulate Field:</strong> protege los campos con acceso controlado (privados con getters/setters), primer paso para darle responsabilidades.<br>
+        <strong>Move Method:</strong> mueve a la Data Class los métodos de otras clases que trabajan sobre sus datos — donde viven los datos, debe vivir el comportamiento.
+      </td>
+    </tr>
+
+    <tr data-cat="dispensable" data-text="lazy class clase perezosa inline class collapse hierarchy">
+      <td><span class="cat-badge cat-dispensable">Dispensable</span></td>
+      <td>
+        <span class="smell-name">Lazy Class</span>
+        <span class="smell-desc">Una clase que no hace suficiente para justificar su existencia. Fue creada con buenas intenciones pero quedó pequeña o irrelevante.</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Inline Class</span>
+          <span class="ref-pill">Collapse Hierarchy</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Inline Class:</strong> fusiona la Lazy Class en la clase que la usa, eliminando la abstracción innecesaria.<br>
+        <strong>Collapse Hierarchy:</strong> si la Lazy Class es una subclase sin diferencia real con la superclase, las combina.
+      </td>
+    </tr>
+
+    <tr data-cat="dispensable" data-text="speculative generality generalizacion especulativa collapse hierarchy inline class">
+      <td><span class="cat-badge cat-dispensable">Dispensable</span></td>
+      <td>
+        <span class="smell-name">Speculative Generality</span>
+        <span class="smell-desc">Código escrito "por si acaso lo necesitamos en el futuro" que hoy nadie usa. Clases abstractas, hooks o parámetros que no tienen usuario real todavía.</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Collapse Hierarchy</span>
+          <span class="ref-pill">Inline Class</span>
+          <span class="ref-pill">Remove Parameter</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Collapse Hierarchy / Inline Class:</strong> elimina las abstracciones que no tienen uso real. En TDD esto se evita naturalmente porque solo se escribe código para pasar una prueba existente — nunca código para futuros hipotéticos.
+      </td>
+    </tr>
+
+    <tr data-cat="dispensable" data-text="dead code codigo muerto eliminar">
+      <td><span class="cat-badge cat-dispensable">Dispensable</span></td>
+      <td>
+        <span class="smell-name">Dead Code</span>
+        <span class="smell-desc">Variables, parámetros, métodos o clases que ya no se usan en ningún lugar. El código sigue ahí "por las dudas".</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Delete Dead Code</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Delete Dead Code:</strong> simplemente se elimina. El control de versiones guarda el historial si alguna vez se necesita recuperarlo. No hay ninguna razón para mantener código que nadie llama.
+      </td>
+    </tr>
+
+    <tr data-cat="dispensable" data-text="uncommunicative name nombre poco descriptivo rename method rename field">
+      <td><span class="cat-badge cat-dispensable">Dispensable</span></td>
+      <td>
+        <span class="smell-name">Uncommunicative Name</span>
+        <span class="smell-desc">Nombres de variables, métodos o clases que no revelan su intención (ej: <code>d</code>, <code>calcular()</code>, <code>Util</code>). El código no se explica solo.</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Rename Method</span>
+          <span class="ref-pill">Rename Field</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Rename Method / Rename Field:</strong> cambia el nombre por uno que revele la intención. Es el refactoring más simple y de mayor impacto en legibilidad. Un buen nombre elimina la necesidad de un comentario.
+      </td>
+    </tr>
+
+    <tr data-cat="dispensable" data-text="comments comentarios replace comment with method extract method">
+      <td><span class="cat-badge cat-dispensable">Dispensable</span></td>
+      <td>
+        <span class="smell-name">Comments</span>
+        <span class="smell-desc">Comentarios que explican <em>qué</em> hace el código (no el porqué). Si el código necesita comentario para entenderse, el código está mal escrito.</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Extract Method</span>
+          <span class="ref-pill">Rename Method</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Extract Method:</strong> extrae el bloque comentado en un método cuyo nombre exprese lo que hacía el comentario. El método bien nombrado reemplaza al comentario.<br>
+        Los comentarios que explican el <em>porqué</em> (decisiones de diseño no obvias) sí son válidos y no son un smell.
+      </td>
+    </tr>
+
+    <tr data-cat="dispensable" data-text="magic numbers numeros magicos replace magic number symbolic constant">
+      <td><span class="cat-badge cat-dispensable">Dispensable</span></td>
+      <td>
+        <span class="smell-name">Magic Numbers</span>
+        <span class="smell-desc">Literales numéricos (o de string) en el código cuyo significado no es obvio: <code>if (status == 3)</code>, <code>precio * 1.21</code>. ¿Qué es 3? ¿Qué es 1.21?</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Replace Magic Number with Symbolic Constant</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Replace Magic Number with Symbolic Constant:</strong> define una constante con nombre significativo (<code>IVA = 1.21</code>, <code>ESTADO_APROBADO = 3</code>) y reemplaza todas las ocurrencias del literal.
+      </td>
+    </tr>
+
+    <!-- ══ COUPLERS ══ -->
+    <tr data-cat="coupler" data-text="feature envy envidia caracteristicas move method extract method">
+      <td><span class="cat-badge cat-coupler">Coupler</span></td>
+      <td>
+        <span class="smell-name">Feature Envy</span>
+        <span class="smell-desc">Un método que parece más interesado en los datos de otra clase que en los de la suya propia. Accede constantemente a campos/métodos de otro objeto en lugar de pedirle que haga el trabajo.</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Move Method</span>
+          <span class="ref-pill">Extract Method</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Move Method:</strong> mueve el método a la clase cuyos datos usa — el comportamiento debe vivir donde están los datos.<br>
+        <strong>Extract Method:</strong> si solo una parte del método tiene envidia, la extrae y la mueve.
+      </td>
+    </tr>
+
+    <tr data-cat="coupler" data-text="message chains cadena mensajes hide delegate extract method">
+      <td><span class="cat-badge cat-coupler">Coupler</span></td>
+      <td>
+        <span class="smell-name">Message Chains</span>
+        <span class="smell-desc">Código del estilo <code>a.getB().getC().getD().hacerAlgo()</code>. El cliente conoce toda la estructura interna de una cadena de objetos. Fragilidad: si cambia un eslabón, todo rompe.</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Hide Delegate</span>
+          <span class="ref-pill">Extract Method</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Hide Delegate:</strong> introduce un método en el objeto inicial que oculta la cadena. El cliente llama <code>a.hacerAlgo()</code> y <code>a</code> internamente navega la cadena. Aplica la Ley de Demeter.
+      </td>
+    </tr>
+
+    <tr data-cat="coupler" data-text="middle man intermediario excesivo remove middle man inline method">
+      <td><span class="cat-badge cat-coupler">Coupler</span></td>
+      <td>
+        <span class="smell-name">Middle Man</span>
+        <span class="smell-desc">Una clase cuya mayoría de métodos simplemente delegan a otra clase sin agregar valor. Se creó para reducir acoplamiento pero quedó vacía de responsabilidad propia.</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Remove Middle Man</span>
+          <span class="ref-pill">Inline Method</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Remove Middle Man:</strong> elimina la clase intermediaria y hace que el cliente llame directamente al objeto real.<br>
+        <strong>Inline Method:</strong> si el método de delegación es trivial, lo inlinea directamente donde se usa.
+      </td>
+    </tr>
+
+    <tr data-cat="coupler" data-text="inappropriate intimacy intimidad inapropiada move method move field extract class">
+      <td><span class="cat-badge cat-coupler">Coupler</span></td>
+      <td>
+        <span class="smell-name">Inappropriate Intimacy</span>
+        <span class="smell-desc">Dos clases que saben demasiado una de la otra: acceden a campos privados, métodos internos o se conocen mutuamente en exceso. Alto acoplamiento bidireccional.</span>
+      </td>
+      <td class="arrow">→</td>
+      <td>
+        <div class="ref-pills">
+          <span class="ref-pill">Move Method</span>
+          <span class="ref-pill">Move Field</span>
+          <span class="ref-pill">Extract Class</span>
+        </div>
+      </td>
+      <td class="ref-desc-cell">
+        <strong>Move Method / Move Field:</strong> redistribuye las responsabilidades para que cada clase solo conozca lo que le corresponde.<br>
+        <strong>Extract Class:</strong> si la intimidad refleja que ambas clases comparten una responsabilidad, la extrae en una tercera clase.
+      </td>
+    </tr>
+
+    <tr id="empty-row" class="hidden">
+      <td colspan="5" style="text-align:center;color:var(--muted);padding:2rem;font-style:italic;">No hay resultados para esa búsqueda.</td>
+    </tr>
+
+  </tbody>
+</table>
+</div>
+
+<!-- ══ GLOSSARY ══ -->
+<div class="glossary-section">
+  <div class="glossary-header" onclick="this.parentElement.classList.toggle('collapsed')">
+    <h2>📖 Glosario de Refactorings</h2>
+    <span class="chevron">▼</span>
+  </div>
+  <div class="glossary-body">
+    <div class="glos-card"><h3>Extract Method</h3><p>Toma un fragmento de código y lo convierte en un método separado con nombre que expresa su propósito.</p></div>
+    <div class="glos-card"><h3>Pull Up Method</h3><p>Sube un método de subclases hermanas a la superclase cuando ambas tienen la misma implementación.</p></div>
+    <div class="glos-card"><h3>Pull Up Field</h3><p>Sube un campo que aparece en múltiples subclases a la superclase común.</p></div>
+    <div class="glos-card"><h3>Move Method</h3><p>Mueve un método a la clase cuyos datos usa más frecuentemente.</p></div>
+    <div class="glos-card"><h3>Move Field</h3><p>Mueve un campo a la clase que lo usa con mayor frecuencia.</p></div>
+    <div class="glos-card"><h3>Encapsulate Field</h3><p>Hace privado un campo público y provee getter/setter, tomando control sobre el acceso.</p></div>
+    <div class="glos-card"><h3>Rename Method / Field</h3><p>Cambia el nombre por uno que revele la intención. El refactoring más simple y más impactante.</p></div>
+    <div class="glos-card"><h3>Form Template Method</h3><p>Cuando dos métodos en subclases hacen pasos similares en el mismo orden, sube el esqueleto a la superclase como Template Method.</p></div>
+    <div class="glos-card"><h3>Replace State-Altering Conditionals with State</h3><p>Reemplaza la lógica condicional que modifica el estado del objeto con el patrón State.</p></div>
+    <div class="glos-card"><h3>Replace Conditional with Polymorphism</h3><p>Crea una jerarquía de clases donde cada subclase implementa el comportamiento de una rama del condicional.</p></div>
+    <div class="glos-card"><h3>Introduce Null Object</h3><p>Reemplaza los chequeos de <code>null</code> con un objeto inerte que implementa la interfaz esperada sin hacer nada (o con comportamiento por defecto).</p></div>
+    <div class="glos-card"><h3>Extract Class</h3><p>Toma parte de los campos y métodos de una clase grande y los mueve a una nueva clase con responsabilidad propia.</p></div>
+    <div class="glos-card"><h3>Inline Class</h3><p>Hace lo contrario de Extract Class: fusiona una clase pequeña que no justifica su existencia en la que la usa.</p></div>
+    <div class="glos-card"><h3>Extract Parameter</h3><p>Extrae lógica relacionada a parámetros de un método largo en un objeto parámetro separado.</p></div>
+    <div class="glos-card"><h3>Hide Delegate</h3><p>Introduce un método que oculta una cadena de mensajes, cumpliendo la Ley de Demeter.</p></div>
+    <div class="glos-card"><h3>Introduce Local Extension</h3><p>Crea una subclase o wrapper de una clase que no podés modificar (ej: de una librería externa) para agregar los métodos que necesitás.</p></div>
+    <div class="glos-card"><h3>Replace Magic Number with Symbolic Constant</h3><p>Define una constante con nombre significativo y reemplaza todos los literales "mágicos".</p></div>
+  </div>
+</div>
+
+<script>
+let currentCat = 'all';
+let currentSearch = '';
+
+function filter(cat, btn) {
+  currentCat = cat;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilters();
+}
+
+function search(val) {
+  currentSearch = val.toLowerCase();
+  applyFilters();
+}
+
+function applyFilters() {
+  const rows = document.querySelectorAll('#tbody tr[data-cat]');
+  let visible = 0;
+  rows.forEach(row => {
+    const catMatch = currentCat === 'all' || row.dataset.cat === currentCat;
+    const searchMatch = !currentSearch || row.dataset.text.includes(currentSearch) ||
+      row.innerText.toLowerCase().includes(currentSearch);
+    if (catMatch && searchMatch) {
+      row.classList.remove('hidden');
+      visible++;
+    } else {
+      row.classList.add('hidden');
+    }
+  });
+  document.getElementById('empty-row').classList.toggle('hidden', visible > 0);
+  document.getElementById('count').textContent = visible + ' smell' + (visible !== 1 ? 's' : '');
+}
+
+// init count
+applyFilters();
+</script>
+</body>
+</html>
